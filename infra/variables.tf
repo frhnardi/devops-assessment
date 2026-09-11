@@ -6,11 +6,9 @@ variable "app_name" {
   default = "demo-api"
 }
 
-# Database password used by the application.
-variable "db_password" {
-  default = "SuperSecret123!"
-}
-
+# Set per deploy to an immutable tag (the git SHA). Never "latest", or the
+# task definition stops changing when the image does and rollback has no
+# earlier version to point at.
 variable "image_tag" {
-  default = "latest"
+  type = string
 }
