@@ -1,7 +1,7 @@
 # Review
 
 The service works, but a leaked image or a bug in the container would have handed over
-the whole AWS account. That's where I spent the time.
+the whole AWS account. Those are the issues I fixed first.
 
 ## Blockers
 
