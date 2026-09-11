@@ -4,14 +4,20 @@ on:
   push:
     branches: [main]
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+# Two applies running at once will corrupt the state file.
+concurrency: deploy-main
 
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: us-east-1
+permissions:
+  contents: read
+  id-token: write # required to fetch the OIDC token
+
+env:
+  AWS_REGION: us-east-1
+  ECR_URL: 123456789012.dkr.ecr.us-east-1.amazonaws.com/demo-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -24,26 +30,45 @@ jobs:
       - name: Install deps
         run: pip install -r app/requirements.txt pytest
 
+      # No continue-on-error. A failing test must stop the deploy.
       - name: Run tests
-        continue-on-error: true
         run: pytest app/
 
+      # terraform validate does not catch open security groups or wide IAM.
+      - name: Scan Terraform
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    # Gives the deploy a manual approval gate in repo settings.
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Short-lived credentials via OIDC. No long-lived keys in secrets.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # The commit SHA is the tag. "latest" gives you nothing to roll back to.
       - name: Build and push image
         run: |
-          docker build -t $ECR_URL:latest .
-          docker push $ECR_URL:latest
-        env:
-          ECR_URL: 123456789012.dkr.ecr.us-east-1.amazonaws.com/demo-api
+          docker build -t $ECR_URL:$GITHUB_SHA .
+          docker push $ECR_URL:$GITHUB_SHA
 
+      # Apply the reviewed plan, not whatever the world looks like by then.
       - name: Terraform apply
         working-directory: infra
         run: |
           terraform init
-          terraform apply -auto-approve
-
-      - name: Force new deployment
-        run: |
-          aws ecs update-service \
-            --cluster demo-api-cluster \
-            --service demo-api \
-            --force-new-deployment
+          terraform plan -out=tfplan -var="image_tag=$GITHUB_SHA"
+          terraform apply tfplan
