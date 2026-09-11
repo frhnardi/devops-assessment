@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 # Connection settings for a downstream datastore.
 DB_HOST = os.environ.get("DB_HOST", "localhost")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "REDACTED_FAKE_PASSWORD")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 
 @app.route("/")
