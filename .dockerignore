@@ -1,0 +1,8 @@
+.git
+.github
+.env
+infra
+README.md
+REVIEW.md
+__pycache__/
+*.pyc
